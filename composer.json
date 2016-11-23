@@ -1,5 +1,5 @@
 {
-    "name": "Jezzis/mysqlsyncer",
+    "name": "jezzis/mysqlsyncer",
     "description": "This package provides a easy way to synchronize database structure to laravel",
     "keywords": ["laravel","illuminate","database","synchronize"],
     "license": "MIT",
