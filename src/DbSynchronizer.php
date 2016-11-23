@@ -86,7 +86,7 @@ class DbSynchronizer extends Command
         }
 
         $this->info("execute sqls: \n" . implode("\n\n", $this->excsqlList));
-        $confirm = $this->ask('continue: y|n');
+        $confirm = $this->ask('continue(!!!make sure your data has been backed up!!!)?: y|n');
         if (strtolower($confirm) == 'y') {
             foreach ($this->excsqlList as $sql) {
                 DB::connection()->getPdo()->exec($sql);
@@ -112,17 +112,30 @@ class DbSynchronizer extends Command
                 $query = (array)DB::selectOne("SHOW CREATE TABLE `{$newTab}`");
 
                 $oldCols = $this->getColumn($query['Create Table']);
-//                r(['tabname' => $newTab, 'cols' => $oldCols]);
-                $updates = [];
-                $allfileds = array_keys($newCols);
+                $updates = $upAppends = $deletes = [];
+                $allNewColNames = array_keys($newCols);
                 foreach ($newCols as $key => $newCol) {
-                    if ($key == 'PRIMARY') {
-                        if (empty($oldCols[$key]) || $newCol != $oldCols[$key]) {
-                            if (!empty($oldCols[$key])) {
-                                $sql = "RENAME TABLE " . $newTab . " TO " . $newTab . '_bak';
-                                $this->excsqlList[] = $sql;
+                    $oldCol = empty($oldCols[$key]) ? null : $oldCols[$key];
+                    if (!in_array($key, ['PRIMARY', 'KEY', 'UNIQUE'])) { // 优先处理字段变更
+                        if (!empty($oldCol)) { // 字段更新
+                            if (!$this->compareColumnDefinition($oldCol, $newCol)) {
+                                $updates[] = "CHANGE `$key` `$key` $newCol";
                             }
-                            $updates[] = "ADD PRIMARY KEY $newCol";
+                        } else { // 字段添加
+                            $i = array_search($key, $allNewColNames);
+                            $fieldposition = $i > 0 ? 'AFTER `' . $allNewColNames[$i - 1] . '`' : 'FIRST';
+                            $updates[] = "ADD `$key` $newCol $fieldposition";
+                        }
+                    } elseif ($key == 'PRIMARY') {
+                        if (empty($oldCol)) { // 原主键不存在,新增主键
+                            $updates[] = "ADD PRIMARY KEY {$newCol}";
+                        } elseif ($newCol != $oldCol) { // 主键替换
+                            $oldColName = str_replace(['(', ')'], '', $oldCol);
+                            if (empty($newCols[$oldColName])) { // 原主键字段已不存在,须删除
+                                $updates[] = "DROP `{$oldColName}`";
+                            }
+                            $updates[] = "DROP PRIMARY KEY";
+                            $updates[] = "ADD PRIMARY KEY {$newCol}";
                         }
                     } elseif ($key == 'KEY') {
                         foreach ($newCol as $subkey => $subValue) {
@@ -138,44 +151,27 @@ class DbSynchronizer extends Command
                         foreach ($newCol as $subkey => $subValue) {
                             if (!empty($oldCols['UNIQUE'][$subkey])) {
                                 if ($subValue != $oldCols['UNIQUE'][$subkey]) {
+                                    $updates[] = "DROP INDEX `$subkey`";
                                     $updates[] = "ADD UNIQUE INDEX `$subkey` $subValue";
                                 }
                             } else {
-//                                $sql = "ALTER TABLE  " . $newTab . " DROP INDEX `$subkey`";
-//                                $this->excsqlList[] = $sql;
                                 $updates[] = "ADD UNIQUE INDEX `$subkey` $subValue";
                             }
                         }
-                    } else {
-                        if (!empty($oldCols[$key])) {
-                            $oldCol = $oldCols[$key];
-//                            if ($newTab == 'option_log') {
-//                                r('col name: ' . $key);
-//                                r('new col def: ' . $newCol);
-//                                r('old col def: ' . $oldCols[$key]);
-//                                $this->debug = true;
-//                            } else {
-//                                $this->debug = false;
-//                            }
-                            if (!$this->compareColumnDefinition($oldCol, $newCol)) {
-                                $updates[] = "CHANGE `$key` `$key` $newCol";
-                            }
-                        } else {
-                            $i = array_search($key, $allfileds);
-                            $fieldposition = $i > 0 ? 'AFTER `' . $allfileds[$i - 1] . '`' : 'FIRST';
-                            $updates[] = "ADD `$key` $newCol $fieldposition";
-                        }
                     }
                 }
-                if ($updates) {
-                    $sql = "ALTER TABLE `" . $newTab . "` " . implode(",\n  ", $updates);
+                if (!empty($updates)) {
+                    if (!empty($upAppends)) {
+                        $updates = array_merge($updates, $upAppends);
+                    }
+
+                    $sql = "ALTER TABLE `{$newTab}` " . implode(",\n  ", $updates);
                     $this->excsqlList[] = $sql;
                 } else {
 // 				    checkColumnDiff($execSqlInfo, $newCols, $oldCols); // 字段顺序校验
                 }
 
                 // del
-                $deletes = array();
                 foreach ($oldCols as $colname => $definition) {
                     if (in_array($colname, array('UNIQUE', 'KEY'))) { // drop index
                         if (empty($newCols[$colname])) {
@@ -191,10 +187,13 @@ class DbSynchronizer extends Command
                             }
                         }
                     } elseif ($colname == 'PRIMARY') {
-                        continue;
+                        if (empty($newCols[$colname])) {
+                            $deletes[] = "DROP PRIMARY KEY";
+                        }
                     } else { // drop column
                         if (empty($newCols[$colname])) {
-                            $deletes[] = "DROP `{$colname}`";
+                            $sql = "DROP `{$colname}`";
+                            !in_array($sql, $updates) && $deletes[] = $sql;
                         }
                     }
                 }
@@ -218,44 +217,73 @@ class DbSynchronizer extends Command
         return $result;
     }
 
+    protected function isAutoIncColumn($def)
+    {
+        return preg_match("/AUTO_INCREMENT/is", $def);
+    }
+
     protected function standardColumnDefinion($def)
     {
-        $def = preg_replace('/DEFAULT\s+([0-9]+)/i', "DEFAULT '\$1'", $def); // 整型默认值加引号
-        $defInfo = $this->parseColumnDefinition($def);
+        static $cache = [];
 
-        $metaType = strtoupper(preg_replace('/\([^\)]+\)/', '', $defInfo['type']));
-        if (in_array($metaType, ['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'LONGTEXT', 'ENUM', 'SET'])) {
-            empty($defInfo['character']) && $defInfo['character'] = 'CHARACTER SET ' . $this->charset;
-            empty($defInfo['collate']) && $defInfo['collate'] = 'COLLATE ' . $this->collate;
+        $uniqKey = md5($def);
+        if (empty($cache[$uniqKey])) {
+            $def = preg_replace('/DEFAULT\s+([0-9]+)/i', "DEFAULT '\$1'", $def); // 整型默认值加引号
+            $defInfo = $this->parseColumnDefinition($def);
+
+            $metaType = strtoupper(preg_replace('/\([^\)]+\)/', '', $defInfo['type']));
+            if (in_array($metaType, ['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'LONGTEXT', 'ENUM', 'SET'])) {
+                empty($defInfo['character']) && $defInfo['character'] = 'CHARACTER SET ' . $this->charset;
+                empty($defInfo['collate']) && $defInfo['collate'] = 'COLLATE ' . $this->collate;
+            }
+
+            $stdColDefStr = strtoupper($defInfo['type']) . ' ';
+            !empty($defInfo['unsigned']) && $stdColDefStr .= strtoupper($defInfo['unsigned']) . ' ';
+            !empty($defInfo['zerofill']) && $stdColDefStr .= strtoupper($defInfo['zerofill']) . ' ';
+            !empty($defInfo['character']) && $stdColDefStr .= strtoupper($defInfo['character']) . ' ';
+            !empty($defInfo['collate']) && $stdColDefStr .= strtoupper($defInfo['collate']) . ' ';
+            !empty($defInfo['nullable']) && $stdColDefStr .= strtoupper($defInfo['nullable']) . ' ';
+            !empty($defInfo['default']) && $stdColDefStr .= $defInfo['default'] . ' ';
+            !empty($defInfo['comment']) && $stdColDefStr .= $defInfo['comment'] . ' ';
+
+            $cache[$uniqKey] = $stdColDefStr;
+            return $stdColDefStr;
         }
-
-        $stdColDefStr = strtoupper($defInfo['type']) . ' ';
-        !empty($defInfo['unsigned'])    && $stdColDefStr .= strtoupper($defInfo['unsigned']) . ' ';
-        !empty($defInfo['zerofill'])    && $stdColDefStr .= strtoupper($defInfo['zerofill']) . ' ';
-        !empty($defInfo['character'])   && $stdColDefStr .= strtoupper($defInfo['character']) . ' ';
-        !empty($defInfo['collate'])     && $stdColDefStr .= strtoupper($defInfo['collate']) . ' ';
-        !empty($defInfo['nullable'])    && $stdColDefStr .= strtoupper($defInfo['nullable']) . ' ';
-        !empty($defInfo['default'])     && $stdColDefStr .= $defInfo['default'] . ' ';
-        !empty($defInfo['comment'])     && $stdColDefStr .= $defInfo['comment'] . ' ';
-        return $stdColDefStr;
+        return $cache[$uniqKey];
     }
 
     protected function parseColumnDefinition($def)
     {
-        $pattern = "/(\w+(?:\([^\)]+\))?)\s*(?:(BINARY)\s+)?(?:(UNSIGNED)\s+)?(?:(ZEROFILL)\s+)?(?:(CHARACTER\s+SET\s+\w+)\s+)?(?:(COLLATE\s+\w+)\s+)?(?:((?:NOT\s+)?NULL)\s*)?(?:(DEFAULT\s+\w+)\s*)?(?:(COMMENT\s+'[^\']+'))?/is";
-        preg_match($pattern, $def, $matches);
+        static $cache = [];
 
-        return [
-            'type'      => $matches[1],
-            'binary'    => !empty($matches[2]) ? $matches[2] : false,
-            'unsigned'  => !empty($matches[3]) ? $matches[3] : false,
-            'zerofill'  => !empty($matches[4]) ? $matches[4] : false,
-            'character' => !empty($matches[5]) ? $matches[5] : false,
-            'collate'   => !empty($matches[6]) ? $matches[6] : false,
-            'nullable'  => !empty($matches[7]) ? $matches[7] : false,
-            'default'   => !empty($matches[8]) ? $matches[8] : false,
-            'comment'   => !empty($matches[9]) ? $matches[9] : false,
-        ];
+        $uniqKey = md5($def);
+        if (empty($cache[$uniqKey])) {
+            $pattern = "/(\w+(?:\([^\)]+\))?)\s*";
+            $pattern .= "(?:(BINARY)\s+)?";
+            $pattern .= "(?:(UNSIGNED)\s+)?";
+            $pattern .= "(?:(ZEROFILL)\s+)?";
+            $pattern .= "(?:(CHARACTER\s+SET\s+\w+)\s+)?";
+            $pattern .= "(?:(COLLATE\s+\w+)\s+)?";
+            $pattern .= "(?:((?:NOT\s+)?NULL)\s*)?";
+            $pattern .= "(?:(DEFAULT\s+\w+)\s*)?";
+            $pattern .= "(?:(AUTO_INCREMENT\s+)\s*)?";
+            $pattern .= "(?:(COMMENT\s+'[^\']+'))?/is";
+            preg_match($pattern, $def, $matches);
+
+            $cache[$uniqKey] = [
+                'type' => $matches[1],
+                'binary' => !empty($matches[2]) ? $matches[2] : false,
+                'unsigned' => !empty($matches[3]) ? $matches[3] : false,
+                'zerofill' => !empty($matches[4]) ? $matches[4] : false,
+                'character' => !empty($matches[5]) ? $matches[5] : false,
+                'collate' => !empty($matches[6]) ? $matches[6] : false,
+                'nullable' => !empty($matches[7]) ? $matches[7] : false,
+                'autoinc' => !empty($matches[8]) ? $matches[8] : false,
+                'default' => !empty($matches[9]) ? $matches[9] : false,
+                'comment' => !empty($matches[10]) ? $matches[10] : false,
+            ];
+        }
+        return $cache[$uniqKey];
     }
 
     function syncView($sql)
