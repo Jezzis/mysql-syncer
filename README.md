@@ -24,6 +24,7 @@ run the command in console:
 ### Params
 
 - file: The file path of the sql file, without .sql extension
+
 ### Options
 
 - --drop: allow drop tables, columns, keys, views, functions, procedure
