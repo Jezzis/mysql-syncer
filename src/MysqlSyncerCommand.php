@@ -1,12 +1,12 @@
 <?php
 
-namespace Jezzis\Mysqlsyncer;
+namespace Jezzis\MysqlSyncer;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-class DbSynchronizer extends Command
+class MysqlSyncerCommand extends Command
 {
     /**
      * The name and signature of the console command.

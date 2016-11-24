@@ -6,7 +6,7 @@ this tool provide an easy way to synchronize database structure including tables
 
  1) In order to install mysql-syncer, just add
 ```json
-  "jezzis/mysqlsyncer": "dev-master"
+  "jezzis/mysqlsyncer":"dev-master"
 ```
 to your composer.json. Then run `composer install` or `composer update`.
 
