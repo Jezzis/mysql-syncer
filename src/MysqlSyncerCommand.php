@@ -3,6 +3,7 @@
 namespace Jezzis\MysqlSyncer;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -39,6 +40,8 @@ class MysqlSyncerCommand extends Command
         $this->host = DB::connection()->getConfig('host');
         $this->user = DB::connection()->getConfig('username');
         $this->definer = "DEFINER=`{$this->user}`@`{$this->host}`";
+
+        $this->sqlPath = Config::get('msyncer.sql_path', './');
     }
 
     /**
@@ -51,10 +54,10 @@ class MysqlSyncerCommand extends Command
         $file = $this->argument('file');
         $this->permitDrop = $this->option('drop');
 
-        $file = $this->sqlPath . $file . '.sql';
+        $file = rtrim($this->sqlPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $file . '.sql';
         while (!file_exists($file)) {
             $file = $this->ask('cannot find file [' . basename($file) . '], please retype filename');
-            $file = $this->sqlPath . $file . '.sql';
+            $file = rtrim($this->sqlPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $file . '.sql';
         }
 
         $this->executeSQL($file);
