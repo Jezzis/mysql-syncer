@@ -1,6 +1,6 @@
 # MYSQL-SYNCER (Laravel 5 Package)
 
-this tool provide an easy way to synchronize database structure including tables, views, functions, procedures for **Laravel 5**.
+This tool provide an easy way to synchronize database structure including tables, views, functions, procedures for **Laravel 5**.
 
 ## Installation
 
@@ -14,9 +14,29 @@ to your composer.json. Then run `composer install` or `composer update`.
 ```php
     Jezzis\Mysqlsyncer\MysqlsyncerServiceProvider::class
 ```
+
+## Configuration
+
+If you want to customize the base path of the sql file, please copy src/config.php to laravel project config directory, rename it to msyncer.php
+```php
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Mysql-Syncer source sql file base path
+    |--------------------------------------------------------------------------
+    |
+    | This is the sql file base path where Mysql-Syncer is looking for.
+    |
+    |
+    */
+    'sql_path' => './',
+];
+```
+
 ## Usage
 
-run the command in console:
+  run the command in console:
 ```bash
     #php artisan db:sync [options] [--] <file>
 ```
