@@ -12,7 +12,7 @@ to your composer.json. Then run `composer install` or `composer update`.
 
  2) In your `config/app.php` add
 ```php
-    Jezzis\Mysqlsyncer\MysqlsyncerServiceProvider::class
+    Jezzis\Mysqlsyncer\MysqlSyncerServiceProvider::class
 ```
 
 ## Configuration
