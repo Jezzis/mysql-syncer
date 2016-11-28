@@ -268,10 +268,11 @@ class MysqlSyncerCommand extends Command
             $pattern .= "(?:(CHARACTER\s+SET\s+\w+)\s+)?";
             $pattern .= "(?:(COLLATE\s+\w+)\s+)?";
             $pattern .= "(?:((?:NOT\s+)?NULL)\s*)?";
-            $pattern .= "(?:(DEFAULT\s+\w+)\s*)?";
+            $pattern .= "(?:(DEFAULT\s+(?:'[^\']+'|\w+))\s*)?";
             $pattern .= "(?:(AUTO_INCREMENT\s+)\s*)?";
             $pattern .= "(?:(COMMENT\s+'[^\']+'))?/is";
             preg_match($pattern, $def, $matches);
+            $this->debug && r($matches);
 
             $cache[$uniqKey] = [
                 'type' => $matches[1],
@@ -281,8 +282,8 @@ class MysqlSyncerCommand extends Command
                 'character' => !empty($matches[5]) ? $matches[5] : false,
                 'collate' => !empty($matches[6]) ? $matches[6] : false,
                 'nullable' => !empty($matches[7]) ? $matches[7] : false,
-                'autoinc' => !empty($matches[8]) ? $matches[8] : false,
-                'default' => !empty($matches[9]) ? $matches[9] : false,
+                'default' => !empty($matches[8]) ? $matches[8] : false,
+                'autoinc' => !empty($matches[9]) ? $matches[9] : false,
                 'comment' => !empty($matches[10]) ? $matches[10] : false,
             ];
         }
