@@ -49,6 +49,9 @@ return [
 
 - --drop: allow drop tables, columns, keys, views, functions, procedure
 
+## Troubleshooting
+  Grant select privilege on mysql.func and mysql.proc to make sure the tools can fetch the definition of functions & procedure.
+
 ## License
 
 mysql-syncer is free software distributed under the terms of the MIT license.
