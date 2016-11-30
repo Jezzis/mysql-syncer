@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\Console\Output\OutputInterface;
 
 class MysqlSyncerCommand extends Command
 {
@@ -25,23 +26,24 @@ class MysqlSyncerCommand extends Command
      */
     protected $description = 'Synchronize database structure';
 
-    protected $permitDrop = false;
+    protected $file, $permitDrop = false;
 
-    protected $sqlPath = './', $debug = false;
+    protected $sqlPath = './';
 
     protected $definer, $host, $user, $charset = 'utf8', $collate = 'utf8_general_ci';
 
-    protected $delimiter, $msgList, $excsqlList;
+    protected $delimiter, $msgList, $execSqlList;
 
-    public function __construct()
+    protected function initEnv()
     {
-        parent::__construct();
-
         $this->host = DB::connection()->getConfig('host');
         $this->user = DB::connection()->getConfig('username');
         $this->definer = "DEFINER=`{$this->user}`@`{$this->host}`";
 
         $this->sqlPath = Config::get('msyncer.sql_path', './');
+
+        $this->file = $this->argument('file');
+        $this->permitDrop = $this->option('drop');
     }
 
     /**
@@ -49,56 +51,88 @@ class MysqlSyncerCommand extends Command
      *
      * @return mixed
      */
-    public function handle()
+    function handle()
     {
-        $file = $this->argument('file');
-        $this->permitDrop = $this->option('drop');
+        $this->initEnv();
 
-        $file = rtrim($this->sqlPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $file . '.sql';
-        while (!file_exists($file)) {
-            $file = $this->ask('cannot find file [' . basename($file) . '], please retype filename');
-            $file = rtrim($this->sqlPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $file . '.sql';
-        }
+        $this->resolveFile();
 
-        $this->executeSQL($file);
-        $this->info('done');
+        $this->start();
     }
 
-    function executeSQL($file)
+    protected function resolveFile()
     {
+        $file = rtrim($this->sqlPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $this->file . '.sql';
+        while (!file_exists($file)) {
+            $file = $this->ask('cannot find file [' . $file . '], please retype');
+            $file = rtrim($this->sqlPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $file . '.sql';
+        }
+        $this->file = $file;
+    }
 
-        // 处理字符串，去掉一些注释的代码
-        $sql = file_get_contents($file);
-        // 去除如/***/的注释
-        $sql = preg_replace("[(/\*)+.+(\*/;\s*)]", '', $sql);
-        // 去除如--类的注释
-        $sql = preg_replace("(--.*?\n)", '', $sql);
+    protected function start()
+    {
+        $sql = $this->prepareSql();
 
         $this->syncTable($sql);
 
         $this->syncView($sql);
 
-        $this->syncFunc($sql);
+        $this->syncFunction($sql);
 
-        $this->syncProc($sql);
+        $this->syncProcedure($sql);
 
-        // 输出信息并存入
-        if (empty($this->excsqlList)) {
-            $this->info('nothing to do.');
+        $this->execSql();
+    }
+
+    protected function prepareSql()
+    {
+        // 处理字符串，去掉一些注释的代码
+        $sql = file_get_contents($this->file);
+        // 去除如/***/的注释
+        $sql = preg_replace("[(/\*)+.+(\*/;\s*)]", '', $sql);
+        // 去除如--类的注释
+        $sql = preg_replace("(--.*?\n)", '', $sql);
+
+        return $sql;
+    }
+
+    protected function addExecSql($execSql)
+    {
+        $this->execSqlList[] = $execSql;
+    }
+
+    public function getExecSqlList()
+    {
+        return $this->execSqlList;
+    }
+
+    protected function execSql()
+    {
+        if (empty($this->execSqlList)) {
+            $this->info("\nnothing to do.");
             return;
         }
 
-        $this->info("execute sqls: \n" . implode("\n\n", $this->excsqlList));
-        $confirm = $this->ask('continue(!!!make sure your data has been backed up!!!)?: y|n');
+        $this->info("\n- execute sqls: \n" . implode("\n\n", $this->execSqlList));
+
+        $warning = 'continue: y|n ? ';
+        if ($this->permitDrop) {
+            $warning .= '(with drop option enabled, please be careful!)';
+        }
+        $confirm = $this->ask($warning);
         if (strtolower($confirm) == 'y') {
-            foreach ($this->excsqlList as $sql) {
+            foreach ($this->execSqlList as $sql) {
                 DB::connection()->getPdo()->exec($sql);
             }
+        } else {
+            $this->info('do nothing.');
         }
     }
 
-    function syncTable($sql)
+    protected function syncTable($sql)
     {
+        $this->comment("\n- sync table", OutputInterface::VERBOSITY_VERY_VERBOSE);
         preg_match_all("/CREATE\s+TABLE\s+(IF NOT EXISTS.+?)?`?(.+?)`?\s*\((.+?)\)\s*(ENGINE|TYPE)\s*\=(.+?;)/is", $sql, $matches);
         $newTabs = empty($matches[2]) ? array() : $matches[2];
         $newSqls = empty($matches[0]) ? array() : $matches[0];
@@ -106,125 +140,130 @@ class MysqlSyncerCommand extends Command
         $totalNum = count($newTabs);
         for ($num = 0; $num < $totalNum; $num++) {
             $newTab = $newTabs[$num];
-            $newCols = $this->getColumn($newSqls[$num]);
+            $this->comment("checking table: `$newTab`...", OutputInterface::VERBOSITY_VERY_VERBOSE);
+            $newCols = $this->getColDefListByTableDef($newSqls[$num]);
             $oldTab = $newTab;
 
-            if (!$this->hasTable($newTab)) {
-                $this->excsqlList[] = str_replace($oldTab, $newTab, $newSqls[$num]);
+            if (!$this->dbHasTable($newTab)) {
+                $this->execSqlList[] = str_replace($oldTab, $newTab, $newSqls[$num]);
             } else {
-                $query = (array)DB::selectOne("SHOW CREATE TABLE `{$newTab}`");
-
-                $oldCols = $this->getColumn($query['Create Table']);
-                $updates = $upAppends = $deletes = [];
+                $oldCols = $this->getColDefListByTableDef($this->getDefFromDB('table', $newTab));
+                $updateSqlList = $deleteSqlList = [];
                 $allNewColNames = array_keys($newCols);
                 foreach ($newCols as $key => $newCol) {
                     $oldCol = empty($oldCols[$key]) ? null : $oldCols[$key];
                     if (!in_array($key, ['PRIMARY', 'KEY', 'UNIQUE'])) { // 优先处理字段变更
                         if (!empty($oldCol)) { // 字段更新
-                            if (!$this->compareColumnDefinition($oldCol, $newCol)) {
-                                $updates[] = "CHANGE `$key` `$key` $newCol";
+                            if (!$this->compareColumnDefinition($newTab, $key, $oldCol, $newCol)) {
+                                $updateSqlList[] = "CHANGE `$key` `$key` $newCol";
                             }
                         } else { // 字段添加
                             $i = array_search($key, $allNewColNames);
-                            $fieldposition = $i > 0 ? 'AFTER `' . $allNewColNames[$i - 1] . '`' : 'FIRST';
-                            $updates[] = "ADD `$key` $newCol $fieldposition";
+                            $fieldPosition = $i > 0 ? 'AFTER `' . $allNewColNames[$i - 1] . '`' : 'FIRST';
+                            $updateSqlList[] = "ADD `$key` $newCol $fieldPosition";
                         }
                     } elseif ($key == 'PRIMARY') {
                         if (empty($oldCol)) { // 原主键不存在,新增主键
-                            $updates[] = "ADD PRIMARY KEY {$newCol}";
+                            $updateSqlList[] = "ADD PRIMARY KEY {$newCol}";
                         } elseif ($newCol != $oldCol) { // 主键替换
                             $oldColName = str_replace(['(', ')'], '', $oldCol);
                             if (empty($newCols[$oldColName])) { // 原主键字段已不存在,须删除
-                                $updates[] = "DROP `{$oldColName}`";
+                                $updateSqlList[] = "DROP `{$oldColName}`";
                             }
-                            $updates[] = "DROP PRIMARY KEY";
-                            $updates[] = "ADD PRIMARY KEY {$newCol}";
+                            $updateSqlList[] = "DROP PRIMARY KEY";
+                            $updateSqlList[] = "ADD PRIMARY KEY {$newCol}";
                         }
                     } elseif ($key == 'KEY') {
-                        foreach ($newCol as $subkey => $subValue) {
-                            if (!empty($oldCols['KEY'][$subkey])) {
-                                if ($subValue != $oldCols['KEY'][$subkey]) {
-                                    $updates[] = "ADD INDEX `$subkey` $subValue";
+                        foreach ($newCol as $subKey => $subValue) {
+                            if (!empty($oldCols['KEY'][$subKey])) {
+                                if ($subValue != $oldCols['KEY'][$subKey]) {
+                                    $updateSqlList[] = "ADD INDEX `$subKey` $subValue";
                                 }
                             } else {
-                                $updates[] = "ADD INDEX `$subkey` $subValue";
+                                $updateSqlList[] = "ADD INDEX `$subKey` $subValue";
                             }
                         }
                     } elseif ($key == 'UNIQUE') {
-                        foreach ($newCol as $subkey => $subValue) {
-                            if (!empty($oldCols['UNIQUE'][$subkey])) {
-                                if ($subValue != $oldCols['UNIQUE'][$subkey]) {
-                                    $updates[] = "DROP INDEX `$subkey`";
-                                    $updates[] = "ADD UNIQUE INDEX `$subkey` $subValue";
+                        foreach ($newCol as $subKey => $subValue) {
+                            if (!empty($oldCols['UNIQUE'][$subKey])) {
+                                if ($subValue != $oldCols['UNIQUE'][$subKey]) {
+                                    $updateSqlList[] = "DROP INDEX `$subKey`";
+                                    $updateSqlList[] = "ADD UNIQUE INDEX `$subKey` $subValue";
                                 }
                             } else {
-                                $updates[] = "ADD UNIQUE INDEX `$subkey` $subValue";
+                                $updateSqlList[] = "ADD UNIQUE INDEX `$subKey` $subValue";
                             }
                         }
                     }
                 }
-                if (!empty($updates)) {
-                    if (!empty($upAppends)) {
-                        $updates = array_merge($updates, $upAppends);
-                    }
-
-                    $sql = "ALTER TABLE `{$newTab}` " . implode(",\n  ", $updates);
-                    $this->excsqlList[] = $sql;
+                if (!empty($updateSqlList)) {
+                    $this->addExecSql("ALTER TABLE `{$newTab}` " . implode(",\n  ", $updateSqlList));
                 } else {
 // 				    checkColumnDiff($execSqlInfo, $newCols, $oldCols); // 字段顺序校验
                 }
 
                 // del
-                foreach ($oldCols as $colname => $definition) {
-                    if (in_array($colname, array('UNIQUE', 'KEY'))) { // drop index
-                        if (empty($newCols[$colname])) {
+                foreach ($oldCols as $colName => $definition) {
+                    if (in_array($colName, array('UNIQUE', 'KEY'))) { // drop index
+                        if (empty($newCols[$colName])) {
                             foreach ($definition as $indexName => $indexColName) {
-                                $deletes[] = "DROP INDEX `{$indexName}`";
+                                $deleteSqlList[] = "DROP INDEX `{$indexName}`";
                             }
                         }
 
-                        if (!empty($newCols[$colname])) {
-                            $diffArr = array_diff(array_keys($definition), array_keys($newCols[$colname]));
+                        if (!empty($newCols[$colName])) {
+                            $diffArr = array_diff(array_keys($definition), array_keys($newCols[$colName]));
                             foreach ($diffArr as $indexName => $indexColName) {
-                                $deletes[] = "DROP INDEX `{$indexName}`";
+                                $deleteSqlList[] = "DROP INDEX `{$indexName}`";
                             }
                         }
-                    } elseif ($colname == 'PRIMARY') {
-                        if (empty($newCols[$colname])) {
-                            $deletes[] = "DROP PRIMARY KEY";
+                    } elseif ($colName == 'PRIMARY') {
+                        if (empty($newCols[$colName])) {
+                            $deleteSqlList[] = "DROP PRIMARY KEY";
                         }
                     } else { // drop column
-                        if (empty($newCols[$colname])) {
-                            $sql = "DROP `{$colname}`";
-                            !in_array($sql, $updates) && $deletes[] = $sql;
+                        if (empty($newCols[$colName])) {
+                            $sql = "DROP `{$colName}`";
+                            !in_array($sql, $updateSqlList) && $deleteSqlList[] = $sql;
                         }
                     }
                 }
 
-                if ($deletes && $this->permitDrop) {
-                    $sql = "ALTER TABLE `{$newTab}` " . implode(",\n  ", $deletes);
-                    $this->excsqlList[] = $sql;
+                if ($deleteSqlList && $this->permitDrop) {
+                    $this->addExecSql("ALTER TABLE `{$newTab}` " . implode(",\n  ", $deleteSqlList));
                 }
             }
+
+            $this->comment("done\n", OutputInterface::VERBOSITY_VERY_VERBOSE);
         }
     }
 
-    protected function compareColumnDefinition(&$def1, &$def2)
+    /**
+     * 比较两个列定义是否相同
+     * @param $table
+     * @param $column
+     * @param $def1
+     * @param $def2
+     * @return bool
+     */
+    protected function compareColumnDefinition($table, $column, &$def1, &$def2)
     {
         $def1 = $this->standardColumnDefinion($def1);
         $def2 = $this->standardColumnDefinion($def2);
         $result = $def1 == $def2;
-        if (!$result || $this->debug) {
-            r([$def1, $def2]);
+        if (!$result) {
+            $this->comment("\na different column definition was detected in `$table`.$column:", OutputInterface::VERBOSITY_VERBOSE);
+            $this->comment("old: $def1", OutputInterface::VERBOSITY_VERBOSE);
+            $this->comment("new: $def2", OutputInterface::VERBOSITY_VERBOSE);
         }
         return $result;
     }
 
-    protected function isAutoIncColumn($def)
-    {
-        return preg_match("/AUTO_INCREMENT/is", $def);
-    }
-
+    /**
+     * 补全列定义
+     * @param $def
+     * @return string
+     */
     protected function standardColumnDefinion($def)
     {
         static $cache = [];
@@ -255,6 +294,11 @@ class MysqlSyncerCommand extends Command
         return $cache[$uniqKey];
     }
 
+    /**
+     * 解析列定义
+     * @param $def
+     * @return mixed
+     */
     protected function parseColumnDefinition($def)
     {
         static $cache = [];
@@ -272,7 +316,6 @@ class MysqlSyncerCommand extends Command
             $pattern .= "(?:(AUTO_INCREMENT\s+)\s*)?";
             $pattern .= "(?:(COMMENT\s+'[^\']+'))?/is";
             preg_match($pattern, $def, $matches);
-            $this->debug && r($matches);
 
             $cache[$uniqKey] = [
                 'type' => $matches[1],
@@ -290,32 +333,43 @@ class MysqlSyncerCommand extends Command
         return $cache[$uniqKey];
     }
 
-    function syncView($sql)
+    /**
+     * 处理视图
+     * @param $sql
+     */
+    protected function syncView($sql)
     {
+        $this->comment("\n- sync view", OutputInterface::VERBOSITY_VERY_VERBOSE);
+
         $pattern = '/CREATE\s+(ALGORITHM=UNDEFINED)?\s+(DEFINER=`.+?`@`.+?`)?\s+(SQL SECURITY DEFINER)?\s+VIEW\s+(IF NOT EXISTS)?\s*`?(.+?)`\s+AS\s+(SELECT\s+.+?)\s*;/is';
         preg_match_all($pattern, $sql, $matches);
 
         $newViews = empty($matches[6]) ? [] : $matches[6];
         $newViewNames = empty($matches[5]) ? [] : $matches[5];
         foreach ($newViewNames as $idx => $newViewName) {
-
-            if ($this->hasView($newViewName)) {
-                $query = (array) DB::selectOne("SHOW CREATE VIEW `{$newViewName}`");
-                preg_match_all($pattern, $query['Create View'] . ';', $matches);
+            $this->comment("view $newViewName", OutputInterface::VERBOSITY_VERY_VERBOSE);
+            if ($this->dbHasView($newViewName)) {
+                $def = $this->getDefFromDB('view', $newViewName);
+                preg_match_all($pattern, $def . ';', $matches);
 
                 $oldDef = $matches[6][0];
                 if ($oldDef != $newViews[$idx]) {
-                    $sql = "DROP VIEW `{$newViewName}`;";
-                    $this->excsqlList[] = $sql;
-                    $this->excsqlList[] = $newViews[$idx];
+                    $this->comment("\na different view definition was detected in `$newViewName`:", OutputInterface::VERBOSITY_VERBOSE);
+                    $this->comment("old def: $oldDef", OutputInterface::VERBOSITY_VERY_VERBOSE);
+                    $this->comment("new def: $newViews[$idx]", OutputInterface::VERBOSITY_VERY_VERBOSE);
+                    $this->addExecSql("DROP VIEW `{$newViewName}`;");
+                    $this->addExecSql($newViews[$idx]);
                 }
             } else {
-                $sql = "CREATE VIEW `{$newViewName}` AS {$newViews[$idx]};";
-                $this->excsqlList[] = $sql;
+                $this->addExecSql("CREATE VIEW `{$newViewName}` AS {$newViews[$idx]};");
             }
         }
     }
 
+    /**
+     * 处理分隔符
+     * @param $sql
+     */
     protected function prepareDelimiter($sql)
     {
         $pattern = '/DELIMITER\s+(.+?)\r?\n\r?/is';
@@ -326,8 +380,14 @@ class MysqlSyncerCommand extends Command
         }
     }
 
-    function syncFunc($sql)
+    /**
+     * 处理函数
+     * @param $sql
+     */
+    protected function syncFunction($sql)
     {
+        $this->comment("\n- sync function", OutputInterface::VERBOSITY_VERY_VERBOSE);
+
         $this->prepareDelimiter($sql);
 
         $token = '';
@@ -343,24 +403,32 @@ class MysqlSyncerCommand extends Command
         $definers = empty($matches[2]) ? [] : $matches[2];
 
         foreach ($newFuncNames as $idx => $newFuncName) {
+            $this->comment("function: $newFuncName", OutputInterface::VERBOSITY_VERY_VERBOSE);
             $newDef = str_replace($definers[$idx], $this->definer, $newFuncs[$idx]);
-            if ($this->hasFunction($newFuncName)) {
-                $query = (array) DB::selectOne("SHOW CREATE FUNCTION `{$newFuncName}`");
-                $oldDef = $query['Create Function'];
+            if ($this->dbHasFunction($newFuncName)) {
+                $oldDef = $this->getDefFromDB('function', $newFuncName);
                 if ($this->stripSpaces($oldDef) != $this->stripSpaces($newDef)) {
-                    r($this->stripSpaces($oldDef));
-                    r($this->stripSpaces($newDef));
-                    $this->excsqlList[] = "DROP FUNCTION `{$newFuncName}`;";
-                    $this->excsqlList[] = $newDef;
+                    $this->comment("\na different function definition was detected in `$newFuncName`:", OutputInterface::VERBOSITY_VERBOSE);
+                    $this->comment("old def: $oldDef", OutputInterface::VERBOSITY_VERBOSE);
+                    $this->comment("new def: $newDef", OutputInterface::VERBOSITY_VERBOSE);
+
+                    $this->addExecSql("DROP FUNCTION `{$newFuncName}`;");
+                    $this->addExecSql($newDef);
                 }
             } else {
-                $this->excsqlList[] = $newDef;
+                $this->addExecSql($newDef);
             }
         }
     }
 
-    function syncProc($sql)
+    /**
+     * 处理存储过程
+     * @param $sql
+     */
+    protected function syncProcedure($sql)
     {
+        $this->comment("\n- sync procedure", OutputInterface::VERBOSITY_VERY_VERBOSE);
+
         $this->prepareDelimiter($sql);
 
         $token = '';
@@ -377,16 +445,20 @@ class MysqlSyncerCommand extends Command
         $definers = empty($matches[2]) ? [] : $matches[2];
 
         foreach ($newProcNames as $idx => $newProcName) {
+            $this->comment("procedure: $newProcName", OutputInterface::VERBOSITY_VERY_VERBOSE);
             $newDef = str_replace($definers[$idx], $this->definer, $newProcs[$idx]);
-            if ($this->hasProcedure($newProcName)) {
-                $query = (array) DB::selectOne("SHOW CREATE PROCEDURE `{$newProcName}`");
-                $oldDef = $query['Create Procedure'];
+            if ($this->dbHasProcedure($newProcName)) {
+                $oldDef = $this->getDefFromDB('procedure', $newProcName);
                 if ($this->stripSpaces($oldDef) != $this->stripSpaces($newDef)) {
-                    $this->excsqlList[] = "DROP PROCEDURE `{$newProcName}`;";
-                    $this->excsqlList[] = $newDef;
+                    $this->comment("\na different procedure definition was detected in `$newProcName`:", OutputInterface::VERBOSITY_VERBOSE);
+                    $this->comment("old def: " . $this->stripSpaces($oldDef), OutputInterface::VERBOSITY_VERBOSE);
+                    $this->comment("new def: " . $this->stripSpaces($newDef), OutputInterface::VERBOSITY_VERBOSE);
+
+                    $this->addExecSql("DROP PROCEDURE `{$newProcName}`;");
+                    $this->addExecSql($newDef);
                 }
             } else {
-                $this->excsqlList[] = $newDef;
+                $this->addExecSql($newDef);
             }
         }
     }
@@ -397,9 +469,9 @@ class MysqlSyncerCommand extends Command
      * @param $execSqlInfo
      * @param $newCols
      * @param $oldCols
-     * @return bool
+     * @return boolean
      */
-    function checkColumnDiff($execSqlInfo, $newCols, $oldCols)
+    protected function checkColumnDiff($execSqlInfo, $newCols, $oldCols)
     {
 
         if (array_keys($newCols) == array_keys($oldCols)) {
@@ -426,14 +498,19 @@ class MysqlSyncerCommand extends Command
     }
 
 
-    function remakeSql($value)
+    protected function remakeSql($value)
     {
         $value = trim(preg_replace("/\s+/u", ' ', $value));
         $value = str_replace(array('`', ', ', ' ,', '( ', ' )', 'mediumtext'), array('', ',', ',', '(', ')', 'text'), $value);
         return $value;
     }
 
-    function getColumn($createSql)
+    /**
+     * 由表定义获取列定义数组
+     * @param $createSql
+     * @return array
+     */
+    protected function getColDefListByTableDef($createSql)
     {
 
         preg_match("/\((.+)\)\s*(ENGINE|TYPE)\s*\=/is", $createSql, $matches);
@@ -468,28 +545,74 @@ class MysqlSyncerCommand extends Command
         return $newCols;
     }
 
-    protected function hasTable($tableName)
+    /**
+     * @param string $type table|view|function|procedure
+     * @param $subject object name
+     * @return string|boolean
+     */
+    protected function getDefFromDB($type, $subject)
+    {
+        $type = strtolower($type);
+        $def = false;
+        if ($type == 'table') {
+            $query = (array)DB::selectOne("SHOW CREATE TABLE `{$subject}`");
+            $def = (string) $query['Create Table'];
+        } elseif ($type == 'view') {
+            $query = (array) DB::selectOne("SHOW CREATE VIEW `{$subject}`");
+            $def = (string) $query['Create View'];
+        } elseif ($type == 'function') {
+            $query = (array) DB::selectOne("SHOW CREATE FUNCTION `{$subject}`");
+            $def = (string) $query['Create Function'];
+        } elseif ($type == 'procedure') {
+            $query = (array)DB::selectOne("SHOW CREATE PROCEDURE `{$subject}`");
+            $def = (string) $query['Create Procedure'];
+        }
+        return $def;
+    }
+
+
+    /**
+     * 当前库是否存在表
+     * @param $tableName
+     * @return bool
+     */
+    protected function dbHasTable($tableName)
     {
         $sql = 'select * from information_schema.tables where table_schema = ? and table_name = ?';
         $ret = DB::select($sql, [Schema::getConnection()->getDatabaseName(), $tableName]);
         return !empty($ret);
     }
 
-    protected function hasFunction($funcName)
+    /**
+     * 当前库是否存在函数
+     * @param $funcName
+     * @return bool
+     */
+    protected function dbHasFunction($funcName)
     {
         $sql = 'select * from information_schema.routines where routine_schema = ? and routine_name = ? and routine_type = ?';
         $ret = DB::select($sql, [Schema::getConnection()->getDatabaseName(), $funcName, 'FUNCTION']);
         return !empty($ret);
     }
 
-    protected function hasProcedure($procName)
+    /**
+     * 当前库是否存在存储过程
+     * @param $procName
+     * @return bool
+     */
+    protected function dbHasProcedure($procName)
     {
         $sql = 'select * from information_schema.routines where routine_schema = ? and routine_name = ? and routine_type = ?';
         $ret = DB::select($sql, [Schema::getConnection()->getDatabaseName(), $procName, 'PROCEDURE']); return !empty($ret);
         return !empty($ret);
     }
 
-    protected function hasView($viewName)
+    /**
+     * 当前库是否存在视图
+     * @param $viewName
+     * @return bool
+     */
+    protected function dbHasView($viewName)
     {
         $sql = 'select * from information_schema.views where table_schema = ? and table_name = ?';
         $ret = DB::select($sql, [Schema::getConnection()->getDatabaseName(), $viewName]);
