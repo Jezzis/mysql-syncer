@@ -1,7 +1,7 @@
 # MYSQL-SYNCER (Laravel 5 Package)
 
+[![Build Status](https://travis-ci.org/Jezzis/mysql-syncer.svg?branch=master)](https://travis-ci.org/Jezzis/mysql-syncer)
 [![Latest Stable Version](https://poser.pugx.org/jezzis/mysqlsyncer/v/stable)](https://packagist.org/packages/jezzis/mysqlsyncer)
-[![Latest Unstable Version](https://poser.pugx.org/jezzis/mysqlsyncer/v/unstable)](https://packagist.org/packages/jezzis/mysqlsyncer)
 [![License](https://poser.pugx.org/jezzis/mysqlsyncer/license)](https://packagist.org/packages/jezzis/mysqlsyncer)
 [![Total Downloads](https://poser.pugx.org/jezzis/mysqlsyncer/downloads)](https://packagist.org/packages/jezzis/mysqlsyncer)
 
