@@ -8,25 +8,7 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Mysql-Syncer source sql file base path
-    |--------------------------------------------------------------------------
-    |
-    | This is the sql file base path where Mysql-Syncer is looking for.
-    |
-    |
-    */
-    'sql_path' => './',
+    'sql_path' => './', // sql file base path where MySQL-Syncer is looking for.
 
-    /*
-    |--------------------------------------------------------------------------
-    | connection driver
-    |--------------------------------------------------------------------------
-    |
-    |
-    |
-    |
-    */
-    'driver' => 'mysql',
+    'driver' => 'mysql', // connection driver, currently only supports MySQL.
 ];
