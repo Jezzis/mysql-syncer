@@ -1,5 +1,11 @@
 # MYSQL-SYNCER (Laravel 5 Package)
 
+[![Latest Stable Version](https://poser.pugx.org/jezzis/mysqlsyncer/v/stable)](https://packagist.org/packages/jezzis/mysqlsyncer)
+[![Latest Unstable Version](https://poser.pugx.org/jezzis/mysqlsyncer/v/unstable)](https://packagist.org/packages/jezzis/mysqlsyncer)
+[![License](https://poser.pugx.org/jezzis/mysqlsyncer/license)](https://packagist.org/packages/jezzis/mysqlsyncer)
+[![Total Downloads](https://poser.pugx.org/jezzis/mysqlsyncer/downloads)](https://packagist.org/packages/jezzis/mysqlsyncer)
+
+
 This tool provide an easy way to synchronize database structure including tables, views, functions, procedures for **Laravel 5**.
 
 ## Installation

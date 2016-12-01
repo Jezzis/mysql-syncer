@@ -79,7 +79,7 @@ class Parser
 
     protected function addExecSql($execSql)
     {
-        $this->execSqlList[] = $execSql;
+        $this->execSqlList[] = trim($execSql);
     }
 
     public function getExecSqlList()
@@ -336,9 +336,10 @@ class Parser
         if (empty($delimiter)) {
             $pattern = '/DELIMITER\s+(.+?)\r?\n\r?/is';
             preg_match($pattern, $sql, $matches);
-            $delimiter = $matches[1];
-            if (empty($delimiter)) {
+            if (empty($matches[1])) {
                 $delimiter = ';;';
+            } else {
+                $delimiter = $matches[1];
             }
         }
         return $delimiter;
