@@ -18,15 +18,18 @@ abstract class BaseTest extends PHPUnit_Framework_TestCase
 
     protected function setUp()
     {
-        // source sql
-        $this->sourceSql = file_get_contents('source.sql');
-
+        // client
         $this->client = m::mock(new \Jezzis\MysqlSyncer\Client\MysqlClient())
             ->shouldDeferMissing();
 
         // definer
         $this->client->shouldReceive('getDefiner')->andReturn('DEFINER=`test`@`localhost`');
+
+        // source sql
+        $this->loadSql();
     }
+
+    abstract function loadSql();
 
     public function tearDown()
     {
