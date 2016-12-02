@@ -15,5 +15,9 @@ before_script:
   - travis_retry composer install --no-interaction --prefer-source
 
 script:
+  - mkdir -p build/logs
+  - phpunit --coverage-clover build/logs/clover.xml
+
+after_script:
   - vendor/bin/phpunit --verbose
   - php vendor/bin/coveralls -v
