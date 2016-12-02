@@ -9,7 +9,6 @@
 namespace Jezzis\MysqlSyncer\Parser;
 
 
-use Illuminate\Support\Facades\Config;
 use Jezzis\MysqlSyncer\Client\ClientInterface;
 use Jezzis\MysqlSyncer\CommandMessage;
 
@@ -125,9 +124,10 @@ class Parser
                             $updateSqlList[] = "ADD PRIMARY KEY {$newCol}";
                         } elseif ($newCol != $oldCol) { // 主键替换
                             $oldColName = str_replace(['(', ')'], '', $oldCol);
-                            if (empty($newCols[$oldColName])) { // 原主键字段已不存在,须删除
+                            if (strpos($oldColName, ',') === false && empty($newCols[$oldColName])) { // 原单主键字段已不存在,须删除
                                 $updateSqlList[] = "DROP `{$oldColName}`";
                             }
+
                             $updateSqlList[] = "DROP PRIMARY KEY";
                             $updateSqlList[] = "ADD PRIMARY KEY {$newCol}";
                         }
@@ -245,10 +245,10 @@ class Parser
             !empty($defInfo['collate']) && $stdColDefStr .= strtoupper($defInfo['collate']) . ' ';
             !empty($defInfo['nullable']) && $stdColDefStr .= strtoupper($defInfo['nullable']) . ' ';
             !empty($defInfo['default']) && $stdColDefStr .= $defInfo['default'] . ' ';
+            !empty($defInfo['autoinc']) && $stdColDefStr .= $defInfo['autoinc'] . ' ';
             !empty($defInfo['comment']) && $stdColDefStr .= $defInfo['comment'] . ' ';
 
             $cache[$uniqKey] = $stdColDefStr;
-            return $stdColDefStr;
         }
         return $cache[$uniqKey];
     }
@@ -272,7 +272,7 @@ class Parser
             $pattern .= "(?:(COLLATE\s+\w+)\s+)?";
             $pattern .= "(?:((?:NOT\s+)?NULL)\s*)?";
             $pattern .= "(?:(DEFAULT\s+(?:'[^\']+'|\w+))\s*)?";
-            $pattern .= "(?:(AUTO_INCREMENT\s+)\s*)?";
+            $pattern .= "(?:(AUTO_INCREMENT)\s*)?";
             $pattern .= "(?:(COMMENT\s+'[^\']+'))?/is";
             preg_match($pattern, $def, $matches);
 
