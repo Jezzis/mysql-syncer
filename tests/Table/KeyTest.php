@@ -137,12 +137,65 @@ EOD;
         $this->assertEquals($sqlList, $actualSql);
     }
 
+    protected function getNoKeySql()
+    {
+        return <<<EOD
+CREATE TABLE IF NOT EXISTS `post` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL COMMENT '用户id',
+  `content` varchar(20) NOT NULL COMMENT '内容',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp COMMENT '创建时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+EOD;
+    }
+
+    protected function getSingleKeySql()
+    {
+        return <<<EOD
+CREATE TABLE IF NOT EXISTS `post` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL COMMENT '用户id',
+  `content` varchar(20) NOT NULL COMMENT '内容',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp COMMENT '创建时间',
+  PRIMARY KEY (`id`)
+  KEY `doctor_user_id_index` (`user_id`),
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+EOD;
+    }
+
+    protected function getMultiKeySql()
+    {
+        return <<<EOD
+CREATE TABLE IF NOT EXISTS `post` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL COMMENT '用户id',
+  `content` varchar(20) NOT NULL COMMENT '内容',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `doctor_user_id_index` (`user_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+EOD;
+    }
+
     /**
      * 测试索引 - 新增
      */
     function testHandle_newKey_shouldGenerateAlterScript()
     {
+        $this->sourceSql = $this->getSingleKeySql();
+        $dbTabDef = $this->getNoKeySql();
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` ADD INDEX `doctor_user_id_index` (user_id)";
+        $this->assertEquals($sqlList, $actualSql);
     }
 
     /**
@@ -150,7 +203,19 @@ EOD;
      */
     function testHandle_missKey_shouldGenerateAlterScript()
     {
+        $dbTabDef = $this->getSingleKeySql();
+        $this->sourceSql = $this->getNoKeySql();
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` DROP INDEX `doctor_user_id_index`";
+        $this->assertEquals($sqlList, $actualSql);
     }
 
     /**
@@ -158,7 +223,29 @@ EOD;
      */
     function testHandle_changeKey_shouldGenerateAlterScript()
     {
+        $this->sourceSql = $this->getSingleKeySql();
+        $dbTabDef = <<<EOD
+CREATE TABLE IF NOT EXISTS `post` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL COMMENT '用户id',
+  `content` varchar(20) NOT NULL COMMENT '内容',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp COMMENT '创建时间',
+  PRIMARY KEY (`id`)
+  KEY `doctor_user_id_index` (`created_at`),
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+EOD;
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` DROP INDEX `doctor_user_id_index`,
+  ADD INDEX `doctor_user_id_index` (user_id)";
+        $this->assertEquals($sqlList, $actualSql);
     }
 
     /**
@@ -166,7 +253,20 @@ EOD;
      */
     function testHandle_changeKeyAddColumn_shouldGenerateAlterScript()
     {
+        $this->sourceSql = $this->getMultiKeySql();
+        $dbTabDef = $this->getSingleKeySql();
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` DROP INDEX `doctor_user_id_index`,
+  ADD INDEX `doctor_user_id_index` (user_id,created_at)";
+        $this->assertEquals($sqlList, $actualSql);
     }
 
     /**
@@ -174,7 +274,20 @@ EOD;
      */
     function testHandle_changeKeyDelColumn_shouldGenerateAlterScript()
     {
+        $this->sourceSql = $this->getSingleKeySql();
+        $dbTabDef = $this->getMultiKeySql();
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` DROP INDEX `doctor_user_id_index`,
+  ADD INDEX `doctor_user_id_index` (user_id)";
+        $this->assertEquals($sqlList, $actualSql);
     }
 
     /**

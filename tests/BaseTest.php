@@ -23,7 +23,7 @@ abstract class BaseTest extends PHPUnit_Framework_TestCase
             ->shouldDeferMissing();
 
         // definer
-        $this->client->shouldReceive('getDefiner')->andReturn('DEFINER=`test`@`localhost`');
+        $this->client->shouldReceive('getDbDefiner')->andReturn('DEFINER=`test`@`localhost`');
 
         // source sql
         $this->loadSql();

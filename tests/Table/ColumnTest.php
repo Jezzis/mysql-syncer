@@ -1,7 +1,5 @@
 <?php
 
-use Mockery as m;
-
 class ColumnTest extends BaseTest
 {
     public function loadSql()

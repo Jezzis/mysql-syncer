@@ -132,24 +132,25 @@ class Parser
                             $updateSqlList[] = "ADD PRIMARY KEY {$newCol}";
                         }
                     } elseif ($key == 'KEY') {
-                        foreach ($newCol as $subKey => $subValue) {
-                            if (!empty($oldCols['KEY'][$subKey])) {
-                                if ($subValue != $oldCols['KEY'][$subKey]) {
-                                    $updateSqlList[] = "ADD INDEX `$subKey` $subValue";
+                        foreach ($newCol as $keyName => $keyDefinition) {
+                            if (!empty($oldCols['KEY'][$keyName])) {
+                                if ($keyDefinition != $oldCols['KEY'][$keyName]) {
+                                    $updateSqlList[] = "DROP INDEX `$keyName`";
+                                    $updateSqlList[] = "ADD INDEX `$keyName` $keyDefinition";
                                 }
                             } else {
-                                $updateSqlList[] = "ADD INDEX `$subKey` $subValue";
+                                $updateSqlList[] = "ADD INDEX `$keyName` $keyDefinition";
                             }
                         }
                     } elseif ($key == 'UNIQUE') {
-                        foreach ($newCol as $subKey => $subValue) {
-                            if (!empty($oldCols['UNIQUE'][$subKey])) {
-                                if ($subValue != $oldCols['UNIQUE'][$subKey]) {
-                                    $updateSqlList[] = "DROP INDEX `$subKey`";
-                                    $updateSqlList[] = "ADD UNIQUE INDEX `$subKey` $subValue";
+                        foreach ($newCol as $keyName => $keyDefinition) {
+                            if (!empty($oldCols['UNIQUE'][$keyName])) {
+                                if ($keyDefinition != $oldCols['UNIQUE'][$keyName]) {
+                                    $updateSqlList[] = "DROP INDEX `$keyName`";
+                                    $updateSqlList[] = "ADD UNIQUE INDEX `$keyName` $keyDefinition";
                                 }
                             } else {
-                                $updateSqlList[] = "ADD UNIQUE INDEX `$subKey` $subValue";
+                                $updateSqlList[] = "ADD UNIQUE INDEX `$keyName` $keyDefinition";
                             }
                         }
                     }
@@ -164,14 +165,7 @@ class Parser
                 foreach ($oldCols as $colName => $definition) {
                     if (in_array($colName, array('UNIQUE', 'KEY'))) { // drop index
                         if (empty($newCols[$colName])) {
-                            foreach ($definition as $indexName => $indexColName) {
-                                $deleteSqlList[] = "DROP INDEX `{$indexName}`";
-                            }
-                        }
-
-                        if (!empty($newCols[$colName])) {
-                            $diffArr = array_diff(array_keys($definition), array_keys($newCols[$colName]));
-                            foreach ($diffArr as $indexName => $indexColName) {
+                            foreach ($definition as $indexName => $indexDefinition) {
                                 $deleteSqlList[] = "DROP INDEX `{$indexName}`";
                             }
                         }
@@ -417,7 +411,7 @@ class Parser
                     $diff = $this->msg->highlightDiff($oldDef, $newDef);
                     $this->msg->verbose("\na different procedure definition was detected in `$newProcName`:");
                     $this->msg->vverbose("old def: " . $this->stripSpaces($oldDef), CommandMessage::MSG_STYLE_NONE);
-                    $this->msg->verbose("new def: " . $diff, CommandMessage::MSG_STYLE_NONE);
+                    $this->msg->verbose("new def: " . $this->stripSpaces($newDef), CommandMessage::MSG_STYLE_NONE);
 
                     $this->addExecSql("DROP PROCEDURE `{$newProcName}`;");
                     $this->addExecSql($newDef);
@@ -445,7 +439,7 @@ class Parser
 
         preg_match("/\((.+)\)\s*(ENGINE|TYPE)\s*\=/is", $createSql, $matches);
 
-        $cols = explode("\n", $matches[1]);
+        $cols = empty($matches[1]) ? [] : explode("\n", $matches[1]);
         $newCols = [];
         foreach ($cols as $value) {
             $value = trim($value);
@@ -477,7 +471,7 @@ class Parser
 
     protected function stripSpaces($str)
     {
-        return preg_replace("/\s*[\r?\n|\t]\s*/", ' ', $str);
+        return preg_replace("/\s*[\r?\n|\t]+\s*/", ' ', $str);
     }
 
     public function getMsgs()

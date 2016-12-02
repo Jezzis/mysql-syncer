@@ -20,7 +20,7 @@
     </testsuites>
     <filter>
         <whitelist processUncoveredFilesFromWhitelist="true">
-            <directory suffix=".php">./src/</directory>
+            <file>./src/Parser/Parser.php</file>
         </whitelist>
     </filter>
 </phpunit>
