@@ -311,7 +311,7 @@ class Parser
                     $this->msg->verbose("old def: $oldDef", CommandMessage::MSG_STYLE_NONE);
                     $this->msg->verbose("new def: $newViews[$idx]", CommandMessage::MSG_STYLE_NONE);
                     $this->addExecSql("DROP VIEW `{$newViewName}`;");
-                    $this->addExecSql($newViews[$idx]);
+                    $this->addExecSql("CREATE VIEW `$newViewName` AS $newViews[$idx];");
                 }
             } else {
                 $this->addExecSql("CREATE VIEW `{$newViewName}` AS {$newViews[$idx]};");

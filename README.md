@@ -38,7 +38,7 @@ return [
 
   run the command in console:
 ```bash
-    #php artisan db:sync [options] [--] <file>
+    # php artisan db:sync --drop <file>
 ```
 
 ### Params
@@ -47,7 +47,7 @@ return [
 
 ### Options
 
-- --drop: allow drop tables, columns, keys, views, functions, procedure
+- --drop: allow drop columns, keys
 
 ## Troubleshooting
   Grant select privilege on mysql.func and mysql.proc to make sure the tools can fetch the definition of functions & procedure.

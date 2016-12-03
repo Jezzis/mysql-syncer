@@ -290,12 +290,65 @@ EOD;
         $this->assertEquals($sqlList, $actualSql);
     }
 
+    protected function getNoUniqueKeySql()
+    {
+        return <<<EOD
+CREATE TABLE IF NOT EXISTS `post` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL COMMENT '用户id',
+  `content` varchar(20) NOT NULL COMMENT '内容',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp COMMENT '创建时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+EOD;
+    }
+
+    protected function getSingleUniqueKeySql()
+    {
+        return <<<EOD
+CREATE TABLE IF NOT EXISTS `post` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL COMMENT '用户id',
+  `content` varchar(20) NOT NULL COMMENT '内容',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+EOD;
+    }
+
+    protected function getMultiUniqueKeySql()
+    {
+        return <<<EOD
+CREATE TABLE IF NOT EXISTS `post` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int(10) unsigned NOT NULL COMMENT '用户id',
+  `content` varchar(20) NOT NULL COMMENT '内容',
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `user_id` (`user_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+EOD;
+    }
+
     /**
      * 测试唯一索引 - 新增
      */
     function testHandle_newUniqueKey_shouldGenerateAlterScript()
     {
+        $this->sourceSql = $this->getSingleUniqueKeySql();
+        $dbTabDef = $this->getNoUniqueKeySql();
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` ADD UNIQUE INDEX `user_id` (user_id)";
+        $this->assertEquals($sqlList, $actualSql);
     }
 
     /**
@@ -303,7 +356,19 @@ EOD;
      */
     function testHandle_missUniqueKey_shouldGenerateAlterScript()
     {
+        $this->sourceSql = $this->getNoUniqueKeySql();
+        $dbTabDef = $this->getSingleUniqueKeySql();
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` DROP INDEX `user_id`";
+        $this->assertEquals($sqlList, $actualSql);
     }
 
     /**
@@ -311,7 +376,20 @@ EOD;
      */
     function testHandle_changeUniqueKeyAddColumn_shouldGenerateAlterScript()
     {
+        $this->sourceSql = $this->getMultiUniqueKeySql();
+        $dbTabDef = $this->getSingleUniqueKeySql();
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` DROP INDEX `user_id`,
+  ADD UNIQUE INDEX `user_id` (user_id,created_at)";
+        $this->assertEquals($sqlList, $actualSql);
     }
 
     /**
@@ -319,6 +397,19 @@ EOD;
      */
     function testHandle_changeUniqueKeyDelColumn_shouldGenerateAlterScript()
     {
+        $this->sourceSql = $this->getSingleUniqueKeySql();
+        $dbTabDef = $this->getMultiUniqueKeySql();
 
+        $this->client->shouldReceive('dbHasTable')->andReturnTrue();
+        $this->client->shouldReceive('getDefFromDB')->withArgs(['table', 'post'])->andReturn($dbTabDef);
+
+        $parser = new \Jezzis\MysqlSyncer\Parser\Parser($this->client, true);
+        $parser->parse($this->sourceSql);
+        $actualSql = $parser->getExecSqlList();
+
+        $sqlList = [];
+        $sqlList[] = "ALTER TABLE `post` DROP INDEX `user_id`,
+  ADD UNIQUE INDEX `user_id` (user_id)";
+        $this->assertEquals($sqlList, $actualSql);
     }
 }
