@@ -265,7 +265,7 @@ class Parser
             $pattern .= "(?:(CHARACTER\s+SET\s+\w+)\s+)?";
             $pattern .= "(?:(COLLATE\s+\w+)\s+)?";
             $pattern .= "(?:((?:NOT\s+)?NULL)\s*)?";
-            $pattern .= "(?:(DEFAULT\s+(?:'[^\']+'|\w+))\s*)?";
+            $pattern .= "(?:(DEFAULT\s+(?:'[^\']*'|\w+))\s*)?";
             $pattern .= "(?:(AUTO_INCREMENT)\s*)?";
             $pattern .= "(?:(COMMENT\s+'[^\']+'))?/is";
             preg_match($pattern, $def, $matches);
