@@ -97,7 +97,7 @@ class MysqlSyncerCommand extends Command
             return ;
         }
 
-        $this->info("\n- execute sql: \n" . implode("\n", $execSqlList));
+        $this->info("\n- execute sql: \n\n" . implode("\n\n", $execSqlList));
         $warning = 'continue: y|n ? ';
         if ($this->permitDrop) {
             $warning .= '(with drop option enabled, please be careful!)';
