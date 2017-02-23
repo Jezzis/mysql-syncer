@@ -229,7 +229,7 @@ class Parser
             $defInfo = $this->parseColumnDefinition($def, $table, $column);
 
             $metaType = strtoupper(preg_replace('/\([^\)]+\)/', '', $defInfo['type']));
-            if (in_array($metaType, ['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'LONGTEXT', 'ENUM', 'SET'])) {
+            if (in_array($metaType, ['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'MEDIUMTEXT', 'LONGTEXT', 'ENUM', 'SET'])) {
                 empty($defInfo['character']) && $defInfo['character'] = 'CHARACTER SET ' . $this->charset;
                 empty($defInfo['collate']) && $defInfo['collate'] = 'COLLATE ' . $this->collate;
             }
@@ -445,7 +445,7 @@ class Parser
     protected function remakeSql($value)
     {
         $value = trim(preg_replace("/\s+/u", ' ', $value));
-        $value = str_replace(array('`', ', ', ' ,', '( ', ' )', 'mediumtext'), array('', ',', ',', '(', ')', 'text'), $value);
+        $value = str_replace(array('`', ', ', ' ,', '( ', ' )'), array('', ',', ',', '(', ')', 'text'), $value);
         return $value;
     }
 
