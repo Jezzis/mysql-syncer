@@ -200,8 +200,8 @@ class Parser
      */
     protected function compareColumnDefinition($table, $column, &$def1, &$def2)
     {
-        $def1 = $this->standardColumnDefinion($def1);
-        $def2 = $this->standardColumnDefinion($def2);
+        $def1 = $this->standardColumnDefinion($def1, $table, $column);
+        $def2 = $this->standardColumnDefinion($def2, $table, $column);
         $result = $def1 == $def2;
         if (!$result) {
             $this->msg->verbose("\na different column definition was detected in `$table`.$column:");
@@ -215,16 +215,18 @@ class Parser
     /**
      * 补全列定义
      * @param $def
+     * @param $table
+     * @param $column
      * @return string
      */
-    protected function standardColumnDefinion($def)
+    protected function standardColumnDefinion($def, $table, $column)
     {
         static $cache = [];
 
         $uniqKey = md5($def);
         if (empty($cache[$uniqKey])) {
             $def = preg_replace('/DEFAULT\s+([0-9]+)/i', "DEFAULT '\$1'", $def); // 整型默认值加引号
-            $defInfo = $this->parseColumnDefinition($def);
+            $defInfo = $this->parseColumnDefinition($def, $table, $column);
 
             $metaType = strtoupper(preg_replace('/\([^\)]+\)/', '', $defInfo['type']));
             if (in_array($metaType, ['CHAR', 'VARCHAR', 'TINYTEXT', 'TEXT', 'LONGTEXT', 'ENUM', 'SET'])) {
@@ -250,14 +252,16 @@ class Parser
     /**
      * 解析列定义
      * @param $def
+     * @param $table
+     * @param $column
      * @return mixed
      */
-    protected function parseColumnDefinition($def)
+    protected function parseColumnDefinition($def, $table, $column)
     {
         static $cache = [];
 
         $uniqKey = md5($def);
-        if (empty($cache[$uniqKey])) {
+        if (empty($cache[$table][$column][$uniqKey])) {
             $pattern = "/(\w+(?:\([^\)]+\))?)\s*";
             $pattern .= "(?:(BINARY)\s+)?";
             $pattern .= "(?:(UNSIGNED)\s+)?";
@@ -270,7 +274,7 @@ class Parser
             $pattern .= "(?:(COMMENT\s+'[^\']+'))?/is";
             preg_match($pattern, $def, $matches);
 
-            $cache[$uniqKey] = [
+            $definition = [
                 'type' => $matches[1],
                 'binary' => !empty($matches[2]) ? $matches[2] : false,
                 'unsigned' => !empty($matches[3]) ? $matches[3] : false,
@@ -282,8 +286,24 @@ class Parser
                 'autoinc' => !empty($matches[9]) ? $matches[9] : false,
                 'comment' => !empty($matches[10]) ? $matches[10] : false,
             ];
+
+            // 默认行为修正
+            if (empty($definition['nullable']) && empty($definition['default'])) {
+                if (empty($cache[$table][$column])) {
+                    $this->msg->warning("\nan irregular definition was detected in `$table`.$column: empty nullable & default.");
+                }
+                $definition['default'] = 'DEFAULT NULL';
+            }
+
+            if (empty($definition['nullable'])) {
+                $definition['nullable'] = 'NULL';
+            }
+
+            empty($cache[$table]) && $cache[$table] = [];
+            empty($cache[$table][$column]) && $cache[$table][$column] = [];
+            $cache[$table][$column][$uniqKey] = $definition;
         }
-        return $cache[$uniqKey];
+        return $cache[$table][$column][$uniqKey];
     }
 
     /**

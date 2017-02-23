@@ -15,8 +15,9 @@ class CommandMessage
 {
     protected $msgList;
 
-    protected $levels = [64, 128, 256];
+    protected $levels = [32, 64, 128, 256];
 
+    const MSG_LEVEL_NORMAL = 32;
     const MSG_LEVEL_VERBOSE = 64;
     const MSG_LEVEL_VVERBOSE = 128;
     const MSG_LEVEL_DEBUG = 256;
@@ -41,6 +42,11 @@ class CommandMessage
     {
         unset($this->msgList);
         $this->msgList = [];
+    }
+
+    public function warning($message, $style = CommandMessage::MSG_STYLE_INFO)
+    {
+        $this->append($message, self::MSG_LEVEL_NORMAL, $style);
     }
 
     public function verbose($message, $style = CommandMessage::MSG_STYLE_COMMENT)
