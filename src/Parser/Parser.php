@@ -244,7 +244,7 @@ class Parser
             !empty($defInfo['autoinc']) && $stdColDefStr .= $defInfo['autoinc'] . ' ';
             !empty($defInfo['comment']) && $stdColDefStr .= $defInfo['comment'] . ' ';
 
-            $cache[$uniqKey] = $stdColDefStr;
+            $cache[$uniqKey] = trim($stdColDefStr);
         }
         return $cache[$uniqKey];
     }
@@ -289,9 +289,6 @@ class Parser
 
             // 默认行为修正
             if (empty($definition['nullable']) && empty($definition['default'])) {
-                if (empty($cache[$table][$column])) {
-                    $this->msg->warning("\nan irregular definition was detected in `$table`.$column: empty nullable & default.");
-                }
                 $definition['default'] = 'DEFAULT NULL';
             }
 
@@ -491,7 +488,7 @@ class Parser
 
     protected function stripSpaces($str)
     {
-        return preg_replace("/\s*[\r?\n|\t]+\s*/", ' ', $str);
+        return strtoupper(preg_replace("/\s*[\r?\n|\t]+\s*/", ' ', $str));
     }
 
     public function getMsgs()
