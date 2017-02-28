@@ -58,7 +58,7 @@ EOD;
         $parser->parse($this->sourceSql);
         $actualSql = $parser->getExecSqlList();
 
-        $sql = "ALTER TABLE `post` CHANGE `id` `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT ,
+        $sql = "ALTER TABLE `post` CHANGE `id` `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
   ADD PRIMARY KEY (id)";
         $this->assertEquals([$sql], $actualSql);
     }
@@ -109,7 +109,7 @@ EOD;
         $actualSql = $parser->getExecSqlList();
 
         $sqlList = [];
-        $sqlList[] = "ALTER TABLE `post` CHANGE `id` `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT ,
+        $sqlList[] = "ALTER TABLE `post` CHANGE `id` `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
   DROP PRIMARY KEY,
   ADD PRIMARY KEY (id)";
         $this->assertEquals($sqlList, $actualSql);
@@ -131,7 +131,7 @@ EOD;
         $actualSql = $parser->getExecSqlList();
 
         $sqlList = [];
-        $sqlList[] = "ALTER TABLE `post` CHANGE `id` `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT ,
+        $sqlList[] = "ALTER TABLE `post` CHANGE `id` `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
   DROP PRIMARY KEY,
   ADD PRIMARY KEY (id)";
         $this->assertEquals($sqlList, $actualSql);
