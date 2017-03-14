@@ -134,7 +134,8 @@ class Parser
                     } elseif ($key == 'KEY') {
                         foreach ($newCol as $keyName => $keyDefinition) {
                             if (!empty($oldCols['KEY'][$keyName])) {
-                                if ($keyDefinition != $oldCols['KEY'][$keyName]) {
+                                $result = $this->compareKeyDefinition($newTab, $keyName, $keyDefinition, $oldCols['KEY'][$keyName]);
+                                if (!$result) {
                                     $updateSqlList[] = "DROP INDEX `$keyName`";
                                     $updateSqlList[] = "ADD INDEX `$keyName` $keyDefinition";
                                 }
@@ -145,7 +146,8 @@ class Parser
                     } elseif ($key == 'UNIQUE') {
                         foreach ($newCol as $keyName => $keyDefinition) {
                             if (!empty($oldCols['UNIQUE'][$keyName])) {
-                                if ($keyDefinition != $oldCols['UNIQUE'][$keyName]) {
+                                $result = $this->compareKeyDefinition($newTab, $keyName, $keyDefinition, $oldCols['UNIQUE'][$keyName]);
+                                if (!$result) {
                                     $updateSqlList[] = "DROP INDEX `$keyName`";
                                     $updateSqlList[] = "ADD UNIQUE INDEX `$keyName` $keyDefinition";
                                 }
@@ -188,6 +190,28 @@ class Parser
 
             $this->msg->vverbose("done\n");
         }
+    }
+
+    /**
+     * 比较两个KEY定义是否相同
+     * @param $table
+     * @param $column
+     * @param $def1
+     * @param $def2
+     * @return bool
+     */
+    protected function compareKeyDefinition($table, $column, $def1, $def2)
+    {
+        $def1 = $this->remakeSql($def1);
+        $def2 = $this->remakeSql($def2);
+        $result = $def1 == $def2;
+        if (!$result) {
+            $this->msg->verbose("\na different key definition was detected in `$table`.$column:");
+            $diff = $this->msg->highlightDiff($def1, $def2);
+            $this->msg->verbose("old: $def1", CommandMessage::MSG_STYLE_NONE);
+            $this->msg->verbose("new: $diff", CommandMessage::MSG_STYLE_NONE);
+        }
+        return $result;
     }
 
     /**
@@ -428,7 +452,7 @@ class Parser
                     $diff = $this->msg->highlightDiff($oldDef, $newDef);
                     $this->msg->verbose("\na different procedure definition was detected in `$newProcName`:");
                     $this->msg->vverbose("old def: " . $this->stripSpaces($oldDef), CommandMessage::MSG_STYLE_NONE);
-                    $this->msg->verbose("new def: " . $this->stripSpaces($newDef), CommandMessage::MSG_STYLE_NONE);
+                    $this->msg->verbose("new def: " . $diff, CommandMessage::MSG_STYLE_NONE);
 
                     $this->addExecSql("DROP PROCEDURE `{$newProcName}`;");
                     $this->addExecSql($newDef);
@@ -462,23 +486,22 @@ class Parser
             $value = trim($value);
             if (empty($value))
                 continue;
-            $value = $this->remakeSql($value);
             if (substr($value, -1) == ',') $value = substr($value, 0, -1);
 
             $vs = explode(' ', $value);
-            $colName = $vs[0];
+            $colName = $this->remakeSql(array_shift($vs));
 
             if ($colName == 'KEY' || $colName == 'INDEX' || $colName == 'UNIQUE') {
-                $name_length = strlen($colName);
-                if ($colName == 'UNIQUE') $name_length = $name_length + 4;
+                if ($colName == 'UNIQUE')
+                    array_shift($vs);
 
-                $subValue = trim(substr($value, $name_length));
-                $subVs = explode(' ', $subValue);
-                $subColName = $subVs[0];
-                $newCols[$colName][$subColName] = trim(substr($value, ($name_length + 2 + strlen($subColName))));
+                $subColName = $this->remakeSql(array_shift($vs));
+                $newCols[$colName][$subColName] = implode($vs, '');
             } elseif ($colName == 'PRIMARY') {
+                $value = $this->remakeSql($value);
                 $newCols[$colName] = trim(substr($value, 11));
             } else {
+                $value = $this->remakeSql($value);
                 $newCol = trim(substr($value, strlen($colName)));
                 $newCols[$colName] = $newCol;
             }

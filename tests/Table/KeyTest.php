@@ -194,7 +194,7 @@ EOD;
         $actualSql = $parser->getExecSqlList();
 
         $sqlList = [];
-        $sqlList[] = "ALTER TABLE `post` ADD INDEX `doctor_user_id_index` (user_id)";
+        $sqlList[] = "ALTER TABLE `post` ADD INDEX `doctor_user_id_index` (`user_id`)";
         $this->assertEquals($sqlList, $actualSql);
     }
 
@@ -244,7 +244,7 @@ EOD;
 
         $sqlList = [];
         $sqlList[] = "ALTER TABLE `post` DROP INDEX `doctor_user_id_index`,
-  ADD INDEX `doctor_user_id_index` (user_id)";
+  ADD INDEX `doctor_user_id_index` (`user_id`)";
         $this->assertEquals($sqlList, $actualSql);
     }
 
@@ -265,7 +265,7 @@ EOD;
 
         $sqlList = [];
         $sqlList[] = "ALTER TABLE `post` DROP INDEX `doctor_user_id_index`,
-  ADD INDEX `doctor_user_id_index` (user_id,created_at)";
+  ADD INDEX `doctor_user_id_index` (`user_id`,`created_at`)";
         $this->assertEquals($sqlList, $actualSql);
     }
 
@@ -286,7 +286,7 @@ EOD;
 
         $sqlList = [];
         $sqlList[] = "ALTER TABLE `post` DROP INDEX `doctor_user_id_index`,
-  ADD INDEX `doctor_user_id_index` (user_id)";
+  ADD INDEX `doctor_user_id_index` (`user_id`)";
         $this->assertEquals($sqlList, $actualSql);
     }
 
@@ -347,7 +347,7 @@ EOD;
         $actualSql = $parser->getExecSqlList();
 
         $sqlList = [];
-        $sqlList[] = "ALTER TABLE `post` ADD UNIQUE INDEX `user_id` (user_id)";
+        $sqlList[] = "ALTER TABLE `post` ADD UNIQUE INDEX `user_id` (`user_id`)";
         $this->assertEquals($sqlList, $actualSql);
     }
 
@@ -388,7 +388,7 @@ EOD;
 
         $sqlList = [];
         $sqlList[] = "ALTER TABLE `post` DROP INDEX `user_id`,
-  ADD UNIQUE INDEX `user_id` (user_id,created_at)";
+  ADD UNIQUE INDEX `user_id` (`user_id`,`created_at`)";
         $this->assertEquals($sqlList, $actualSql);
     }
 
@@ -409,7 +409,7 @@ EOD;
 
         $sqlList = [];
         $sqlList[] = "ALTER TABLE `post` DROP INDEX `user_id`,
-  ADD UNIQUE INDEX `user_id` (user_id)";
+  ADD UNIQUE INDEX `user_id` (`user_id`)";
         $this->assertEquals($sqlList, $actualSql);
     }
 }
